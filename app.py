@@ -49,7 +49,24 @@ if st.button("开始分析"):
                 "最大回撤",
                 f"{metrics['最大回撤']:.2%}",
             )
+            st.subheader("最大回撤详情")
 
+            dd1, dd2, dd3 = st.columns(3)
+
+            dd1.metric(
+                "回撤峰值日期",
+                metrics["回撤峰值日期"],
+            )
+
+            dd2.metric(
+                "回撤谷底日期",
+                metrics["回撤谷底日期"],
+            )
+
+            dd3.metric(
+                "峰值至谷底天数",
+                f"{int(metrics['峰值至谷底天数'])} 天",
+            )
             col4, col5 = st.columns(2)
 
             col4.metric(

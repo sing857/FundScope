@@ -1,85 +1,117 @@
-﻿import numpy as np
+import numpy as np
 import pandas as pd
 
 
 def calculate_metrics(nav, risk_free_rate=0.02):
-    """计算基金历史收益与风险指标。
+    """计算基金历史收益、风险指标及最大回撤对应日期。"""
 
-    参数:
-        nav: pandas.Series，基金单位净值，最好以日期为索引。
-        risk_free_rate: 年化无风险利率，默认 2%。
+    # 1. 校验输入
+    if not isinstance(nav, pd.Series):
+        raise TypeError("净值数据必须是 pandas.Series。")
 
-    返回:
-        包含区间收益率、年化收益率、年化波动率、
-        最大回撤和夏普比率的字典。
-    """
+    if (
+        not isinstance(risk_free_rate, (int, float))
+        or isinstance(risk_free_rate, bool)
+        or not np.isfinite(risk_free_rate)
+        or risk_free_rate <= -1
+    ):
+        raise ValueError("无风险利率必须是大于 -100% 的有限数值。")
 
-    # 1. 清洗净值数据
-    nav = pd.to_numeric(nav, errors="coerce").dropna()
+    nav = pd.to_numeric(nav, errors="coerce").dropna().astype(float)
 
     if len(nav) < 2:
-        raise ValueError("至少需要两条有效的基金净值数据")
+        raise ValueError("至少需要两条有效的基金净值数据。")
 
-    if (nav <= 0).any():
-        raise ValueError("基金净值必须大于零")
+    if not np.isfinite(nav.to_numpy()).all() or (nav <= 0).any():
+        raise ValueError("基金净值必须是大于零的有限数值。")
 
-    if not np.isfinite(risk_free_rate) or risk_free_rate <= -1:
-        raise ValueError("无风险利率必须是大于 -100% 的有效数值")
+    # 2. 校验日期并排序
+    if not isinstance(nav.index, pd.DatetimeIndex):
+        raise ValueError("净值数据必须使用日期索引。")
 
-    # 2. 如果索引是日期，按日期升序排列
-    if isinstance(nav.index, pd.DatetimeIndex):
-        nav = nav.sort_index()
+    if nav.index.isna().any():
+        raise ValueError("日期索引包含无效日期。")
 
-        if nav.index.has_duplicates:
-            raise ValueError("净值数据存在重复日期，请先清理")
+    if nav.index.has_duplicates:
+        raise ValueError("净值数据存在重复日期，请先清理。")
 
-        days = (nav.index[-1] - nav.index[0]).days
-    else:
-        days = len(nav) - 1
+    nav = nav.sort_index()
 
-    # 3. 区间累计收益率
+    days = (nav.index[-1] - nav.index[0]).total_seconds() / 86400
+
+    if days <= 0:
+        raise ValueError("净值数据的日期跨度必须大于零。")
+
+    # 3. 区间收益率
     total_return = nav.iloc[-1] / nav.iloc[0] - 1
 
     # 4. 年化复合收益率
-    if days > 0:
-        annualized_return = (
-            (nav.iloc[-1] / nav.iloc[0]) ** (365 / days) - 1
-        )
-    else:
-        annualized_return = np.nan
+    annualized_return = (
+        (nav.iloc[-1] / nav.iloc[0]) ** (365 / days) - 1
+    )
 
     # 5. 每期收益率
     returns = nav.pct_change().dropna()
 
-    # 6. 年化波动率：假设数据为日频，按 252 个交易日年化
-    daily_volatility = returns.std(ddof=1)
-    annualized_volatility = daily_volatility * np.sqrt(252)
+    # 6. 年化波动率和夏普比率
+    # 假设净值为日频，使用 252 个交易日年化
+    if len(returns) >= 2:
+        period_volatility = returns.std(ddof=1)
+        annualized_volatility = period_volatility * np.sqrt(252)
 
-    # 7. 最大回撤
-    running_max = nav.cummax()
-    drawdowns = nav / running_max - 1
-    max_drawdown = drawdowns.min()
+        daily_risk_free_rate = (1 + risk_free_rate) ** (1 / 252) - 1
+        excess_returns = returns - daily_risk_free_rate
 
-    # 8. 夏普比率：每日收益率与每日无风险收益率比较
-    daily_risk_free_rate = (1 + risk_free_rate) ** (1 / 252) - 1
-    excess_returns = returns - daily_risk_free_rate
-    excess_volatility = returns.std(ddof=1)
-
-    if (
-        len(excess_returns) >= 2
-        and excess_volatility > 0
-        and np.isfinite(excess_volatility)
-    ):
-        sharpe_ratio = (
-            excess_returns.mean() / excess_volatility
-        ) * np.sqrt(252)
+        if (
+            np.isfinite(period_volatility)
+            and period_volatility > 0
+            and np.isfinite(excess_returns.mean())
+        ):
+            sharpe_ratio = (
+                excess_returns.mean() / period_volatility
+            ) * np.sqrt(252)
+        else:
+            sharpe_ratio = np.nan
     else:
+        annualized_volatility = np.nan
         sharpe_ratio = np.nan
 
+    # 7. 最大回撤及对应日期
+    running_max = nav.cummax()
+    drawdowns = nav / running_max - 1
+
+    trough_date = drawdowns.idxmin()
+    max_drawdown = float(drawdowns.loc[trough_date])
+
+    # 找到谷底之前的历史最高净值
+    nav_until_trough = nav.loc[:trough_date]
+    peak_nav = nav_until_trough.max()
+
+    # 如果峰值重复出现，取最后一次
+    peak_date = nav_until_trough[
+        nav_until_trough == peak_nav
+    ].index[-1]
+
+    drawdown_duration_days = (trough_date - peak_date).days
+
+    # 8. 返回结果
+    results = {
+        "区间收益率": total_return,
+        "年化收益率": annualized_return,
+        "年化波动率": annualized_volatility,
+        "最大回撤": max_drawdown,
+        "夏普比率": sharpe_ratio,
+        "回撤峰值日期": peak_date.strftime("%Y-%m-%d"),
+        "回撤谷底日期": trough_date.strftime("%Y-%m-%d"),
+        "峰值至谷底天数": int(drawdown_duration_days),
+    }
+
     return {
-        "区间收益率": float(total_return),
-        "年化收益率": float(annualized_return),
-        "年化波动率": float(annualized_volatility),
-        "最大回撤": float(max_drawdown),
-        "夏普比率": float(sharpe_ratio),
+        name: (
+            float(value)
+            if isinstance(value, (int, float, np.integer, np.floating))
+            and np.isfinite(value)
+            else value
+        )
+        for name, value in results.items()
     }
