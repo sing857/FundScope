@@ -1,5 +1,26 @@
-import akshare as ak
+﻿import akshare as ak
 import pandas as pd
+
+
+def fetch_fund_name(fund_code: str) -> str:
+    """根据基金代码获取基金简称。"""
+
+    fund_code = str(fund_code).strip()
+
+    if len(fund_code) != 6 or not fund_code.isdigit():
+        raise ValueError("请输入有效的6位基金代码，例如005827。")
+
+    fund_list = ak.fund_name_em()
+
+    matched = fund_list.loc[
+        fund_list["基金代码"].astype(str).str.zfill(6) == fund_code,
+        "基金简称",
+    ]
+
+    if matched.empty:
+        raise ValueError(f"没有找到基金代码 {fund_code} 对应的名称。")
+
+    return str(matched.iloc[0])
 
 
 def fetch_fund_nav(fund_code: str) -> pd.DataFrame:

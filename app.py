@@ -1,7 +1,6 @@
 ﻿import streamlit as st
-import pandas as pd
 
-from data_fetcher import fetch_fund_nav
+from data_fetcher import fetch_fund_name, fetch_fund_nav
 from analyzer import calculate_metrics
 
 
@@ -25,12 +24,16 @@ if st.button("开始分析"):
         st.error("请输入有效的六位基金代码。")
     else:
         try:
-            with st.spinner("正在获取基金历史净值……"):
+            with st.spinner("正在获取基金信息与历史净值……"):
+                fund_name = fetch_fund_name(fund_code)
                 df = fetch_fund_nav(fund_code)
                 df = df.set_index("date")
                 metrics = calculate_metrics(df["nav"])
 
-            st.subheader(f"基金代码：{fund_code}")
+            st.header(fund_name)
+            st.caption(f"基金代码：{fund_code}")
+
+            st.subheader("收益与风险指标")
 
             col1, col2, col3 = st.columns(3)
 
@@ -59,23 +62,37 @@ if st.button("开始分析"):
             )
 
             st.subheader("历史单位净值走势")
-            st.line_chart(df[["nav"]].rename(columns={"nav": "单位净值"}))
-
-            st.subheader("历史净值数据")
-            st.write(
-                f"数据范围：{df.index.min().date()} 至 "
-                f"{df.index.max().date()}"
+            st.line_chart(
+                df[["nav"]].rename(columns={"nav": "单位净值"}),
+                x_label="日期",
+                y_label="单位净值",
             )
-            st.write(f"有效记录数：{len(df)} 条")
+
+            st.subheader("数据概况")
+
+            info1, info2, info3 = st.columns(3)
+
+            info1.metric("数据起始日期", str(df.index.min().date()))
+            info2.metric("数据结束日期", str(df.index.max().date()))
+            info3.metric("有效净值记录", f"{len(df)} 条")
+
+            st.subheader("历史净值明细")
 
             st.dataframe(
                 df.sort_index(ascending=False),
-                use_container_width=True,
+                width="stretch",
+            )
+
+            st.caption(
+                "数据来源：东方财富相关公开数据接口（通过 AKShare 获取）。"
+                "数据可能存在延迟或缺失，请以基金管理人公布的信息为准。"
             )
 
             st.info(
                 "本工具仅用于历史数据分析，不构成投资建议。"
                 "历史表现不代表未来收益。"
+                "收益和回撤指标基于当前获取的单位净值计算，"
+                "可能未完整反映分红再投资的影响。"
             )
 
         except Exception as exc:
