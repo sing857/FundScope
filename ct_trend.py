@@ -1,4 +1,4 @@
-﻿import pandas as pd
+import pandas as pd
 
 from ct_metrics import build_company_history
 
@@ -19,7 +19,7 @@ def _safe_change(current, previous):
     return current - previous
 
 
-def analyze_company_trend(symbol, periods=20):
+def analyze_company_trend(symbol, periods=20, history=None):
     """
     企业财务趋势分析。
 
@@ -41,10 +41,13 @@ def analyze_company_trend(symbol, periods=20):
         raise ValueError("periods 必须是 1 到 100 之间的整数。")
 
     # 多取四个季度，为同比计算保留历史数据。
-    history = build_company_history(
-        symbol,
-        periods=min(periods + 4, 100)
-    )
+    if history is None:
+        history = build_company_history(
+            symbol,
+            periods=min(periods + 4, 100)
+        )
+    elif not isinstance(history, pd.DataFrame):
+        raise ValueError("history must be a pandas DataFrame.")
 
     if history.empty:
         raise ValueError("没有可用的企业历史财务数据。")

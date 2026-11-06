@@ -50,7 +50,7 @@ def _add_alert(alerts, alert_type, level, report_date, message):
     })
 
 
-def analyze_company_alerts(symbol, periods=20):
+def analyze_company_alerts(symbol, periods=20, trend=None):
     """
     企业财务异常提示（第一版修订）。
 
@@ -70,7 +70,12 @@ def analyze_company_alerts(symbol, periods=20):
     ):
         raise ValueError("periods 必须是 1 到 100 之间的整数。")
 
-    df = analyze_company_trend(symbol, max(periods, 3)).copy()
+    if trend is None:
+        df = analyze_company_trend(symbol, max(periods, 3)).copy()
+    elif isinstance(trend, pd.DataFrame):
+        df = trend.copy()
+    else:
+        raise ValueError("trend must be a pandas DataFrame.")
 
     if df.empty:
         raise ValueError("没有可用的企业财务数据。")

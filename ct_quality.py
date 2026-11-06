@@ -1,4 +1,4 @@
-import numpy as np
+﻿import numpy as np
 import pandas as pd
 
 from data_fetcher import (
@@ -350,7 +350,7 @@ def _check_recent_coverage(report_date_sets, periods=20):
     return coverage, summary
 
 
-def validate_company_data(symbol):
+def validate_company_data(symbol, reports=None):
     """执行上市公司财报质量检查。"""
     symbol = str(symbol).strip()
 
@@ -359,6 +359,7 @@ def validate_company_data(symbol):
             "股票代码必须是6位数字，例如600519。"
         )
 
+    source_reports = reports
     reports = {}
     summaries = []
     field_results = []
@@ -367,7 +368,15 @@ def validate_company_data(symbol):
 
     for report_name, config in REPORT_CONFIG.items():
         try:
-            raw_df = config["fetcher"](symbol)
+            if source_reports is None:
+                raw_df = config["fetcher"](symbol)
+            else:
+                input_key = {
+                    fetch_stock_income_statement: "income",
+                    fetch_stock_balance_sheet: "balance",
+                    fetch_stock_cash_flow_statement: "cashflow",
+                }[config["fetcher"]]
+                raw_df = source_reports.get(input_key)
             df, summary = _prepare_report(
                 raw_df, report_name
             )
