@@ -1,4 +1,4 @@
-﻿import pandas as pd
+import pandas as pd
 
 from data_fetcher import (
     fetch_stock_income_statement,
@@ -21,7 +21,7 @@ def _safe_ratio(numerator, denominator):
 
 
 def _prepare_statement(df):
-    """清洗财报日期，确保每个报告期只有一条记录。"""
+    """清洗财报日期，排除存在重复记录的报告期。"""
     if df is None or df.empty:
         raise ValueError("获取到的财报为空。")
 
@@ -33,9 +33,17 @@ def _prepare_statement(df):
         df["REPORT_DATE"], errors="coerce"
     )
     df = df.dropna(subset=["REPORT_DATE"])
-    df = df.drop_duplicates(
-        subset=["REPORT_DATE"], keep="first"
-    )
+
+    # 同一报告期出现多条记录时，全部排除，不任意保留其中一条。
+    duplicate_dates = df.loc[
+        df.duplicated(subset=["REPORT_DATE"], keep=False),
+        "REPORT_DATE",
+    ]
+
+    df = df.loc[
+        ~df["REPORT_DATE"].isin(duplicate_dates)
+    ]
+
     return df.set_index("REPORT_DATE").sort_index()
 
 
@@ -66,7 +74,7 @@ def _single_quarter_value(df, date, column):
     return current - previous
 
 
-def build_company_history(symbol, periods=20):
+def build_company_history(symbol, periods=20, reports=None):
     """构建公司历史财务指标，不生成综合评分。"""
 
     if (
@@ -76,15 +84,24 @@ def build_company_history(symbol, periods=20):
     ):
         raise ValueError("periods 必须是 1 到 100 之间的整数。")
 
-    income = _prepare_statement(
-        fetch_stock_income_statement(symbol)
-    )
-    balance = _prepare_statement(
-        fetch_stock_balance_sheet(symbol)
-    )
-    cashflow = _prepare_statement(
-        fetch_stock_cash_flow_statement(symbol)
-    )
+    if reports is None:
+        income_raw = fetch_stock_income_statement(symbol)
+        balance_raw = fetch_stock_balance_sheet(symbol)
+        cashflow_raw = fetch_stock_cash_flow_statement(symbol)
+    else:
+        required_reports = {"income", "balance", "cashflow"}
+        if not isinstance(reports, dict) or not required_reports.issubset(reports):
+            raise ValueError(
+                "reports must contain income, balance and cashflow."
+            )
+
+        income_raw = reports["income"]
+        balance_raw = reports["balance"]
+        cashflow_raw = reports["cashflow"]
+
+    income = _prepare_statement(income_raw)
+    balance = _prepare_statement(balance_raw)
+    cashflow = _prepare_statement(cashflow_raw)
 
     common_dates = sorted(
         set(income.index)

@@ -133,3 +133,73 @@ def fetch_stock_balance_sheet(symbol):
 def fetch_stock_cash_flow_statement(symbol):
     """获取上市公司现金流量表，原始字段保持数据源命名。"""
     return _fetch_stock_report(symbol, "cashflow")
+def fetch_stock_financial_reports(symbol):
+    """并发获取上市公司的三张财务报表。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            "income": executor.submit(
+                fetch_stock_income_statement, symbol
+            ),
+            "balance": executor.submit(
+                fetch_stock_balance_sheet, symbol
+            ),
+            "cashflow": executor.submit(
+                fetch_stock_cash_flow_statement, symbol
+            ),
+        }
+
+        reports = {
+            name: future.result()
+            for name, future in futures.items()
+        }
+
+    return reports
+
+
+def fetch_stock_info(symbol):
+    """获取上市公司基本信息。"""
+
+    symbol = str(symbol).strip()
+
+    if len(symbol) != 6 or not symbol.isdigit():
+        raise ValueError("股票代码必须是6位数字，例如600519。")
+
+    df = ak.stock_individual_info_em(symbol=symbol)
+
+    if df is None or df.empty:
+        raise ValueError(f"未获取到股票 {symbol} 的基本信息。")
+
+    if not {"item", "value"}.issubset(df.columns):
+        raise ValueError("股票基本信息缺少必要字段。")
+
+    info = dict(zip(
+        df["item"].astype(str).str.strip(),
+        df["value"],
+    ))
+
+    if "股票简称" not in info:
+        raise ValueError("股票基本信息缺少股票简称。")
+
+    listing_date = pd.to_datetime(
+        str(info.get("上市时间", "")),
+        format="%Y%m%d",
+        errors="coerce",
+    )
+
+    return {
+        "symbol": symbol,
+        "name": str(info["股票简称"]),
+        "industry": info.get("行业"),
+        "latest_price": info.get("最新"),
+        "total_shares": info.get("总股本"),
+        "float_shares": info.get("流通股"),
+        "market_cap": info.get("总市值"),
+        "float_market_cap": info.get("流通市值"),
+        "listing_date": (
+            listing_date.strftime("%Y-%m-%d")
+            if pd.notna(listing_date)
+            else None
+        ),
+    }
